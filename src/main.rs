@@ -1,3 +1,19 @@
+//
+// Copyright (c) 2019 Reyk Floeter <contact@reykfloeter.com>
+//
+// Permission to use, copy, modify, and distribute this software for any
+// purpose with or without fee is hereby granted, provided that the above
+// copyright notice and this permission notice appear in all copies.
+//
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+// WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+// ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+// WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+// ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+// OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+//
+
 extern crate ncurses;
 extern crate rand;
 
@@ -6,51 +22,119 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::ops::Deref;
 
-const FIELD_HEIGHT: i32 = 18;
-const FIELD_WIDTH: i32 = 12;
+const GAME_HEIGHT: i32 = 18;
+const GAME_WIDTH: i32 = 12;
+const KEY_SPACE: i32 = 32;
+const KEY_QUIT: i32 = 113;
+const KEY_RESTART: i32 = 114;
+const KEY_PLUS: i32 = 43;
+const KEY_MINUS: i32 = 45;
 
-struct Field {
+/// The rETRIS game.
+struct Game {
     window: WINDOW,
-    blocks: Vec<Block>,
-    data: [char; (FIELD_HEIGHT * FIELD_WIDTH) as usize],
+    status: WINDOW,
+    data: [char; (GAME_HEIGHT * GAME_WIDTH) as usize],
+    score: i32,
+    done: bool,
+    level: i32,
 }
 
-impl Field {
+impl Game {
     pub fn new() -> Self {
         let yoff = 1;
-        let xoff = getmaxx(curscr()) / 2 - ((FIELD_WIDTH + 2) / 2);
-        let window = newwin(FIELD_HEIGHT + 2, FIELD_WIDTH + 2, yoff, xoff);
+        let xoff = getmaxx(curscr()) / 2 - ((GAME_WIDTH + 2) / 2);
+        let level = 10;
+
+        let window = newwin(GAME_HEIGHT + 2, GAME_WIDTH + 2, yoff, xoff);
+        let status = newwin(GAME_HEIGHT + 2, xoff - 2, yoff, 1);
         box_(window, 0, 0);
+
         keypad(window, true);
         intrflush(window, false);
-        let mut field = Self {
+        halfdelay(level);
+
+        let mut game = Self {
             window,
-            blocks: Vec::new(),
-            data: [0 as char; (FIELD_HEIGHT * FIELD_WIDTH) as usize],
+            status,
+            data: [0 as char; (GAME_HEIGHT * GAME_WIDTH) as usize],
+            score: 0,
+            done: false,
+            level,
         };
-        field.refresh();
-        field
+        game.refresh();
+        game
     }
 
     pub fn refresh(&mut self) {
-        let mut data = self.data.clone();
         box_(**self, 0, 0);
-        for block in self.blocks.iter() {
-            block.store(&self, &mut data);
-        }
         wrefresh(**self);
-        self.data = data;
+    }
+
+    pub fn faster(&mut self) {
+        if self.level > 1 {
+            self.level = self.level - 1;
+        }
+        halfdelay(self.level);
+    }
+
+    pub fn slower(&mut self) {
+        if self.level < 10 {
+            self.level = self.level + 1;
+        }
+        halfdelay(self.level);
+    }
+
+    pub fn addscore(&mut self, score: i32) {
+        self.score = self.score + score;
+    }
+
+    pub fn gameover(&mut self) {
+        self.done = true;
+    }
+
+    pub fn status(&mut self, block: &mut Block) {
+        wclear(self.status);
+        mvwaddstr(self.status, 0, 0, "rETRIS");
+        mvwaddstr(self.status, 1, 0, "(reyk's TETRIS)");
+        mvwaddstr(self.status, 3, 0, "Next block:");
+        block.setyx(4, 4);
+        block.draw(self.status);
+        mvwaddstr(self.status, 9, 0, &format!("Score: {}", self.score));
+        mvwaddstr(
+            self.status,
+            10,
+            0,
+            &format!("Level: {}", 10 - self.level + 1),
+        );
+        if self.done {
+            mvwaddstr(self.status, 12, 0, "GAME OVER!");
+        }
+        mvwaddstr(
+            self.status,
+            getmaxy(self.status) - 2,
+            0,
+            "+: faster  r: restart",
+        );
+        mvwaddstr(
+            self.status,
+            getmaxy(self.status) - 1,
+            0,
+            "-: slower  q: quit",
+        );
+        wrefresh(self.status);
     }
 
     pub fn store(&mut self, block: Block) {
-        self.blocks.push(block);
+        self.addscore(10 - self.level + 1);
+        block.store(**self, &mut self.data);
     }
 
     pub fn index(y: i32, x: i32) -> i32 {
-        if y < 1 || x < 1 || y > FIELD_HEIGHT + 1 || x > FIELD_WIDTH + 1 {
+        if y < 1 || x < 1 || y > GAME_HEIGHT + 1 || x > GAME_WIDTH + 1 {
             return -1;
         }
-        (y - 1) * FIELD_WIDTH + (x - 1)
+        (y - 1) * GAME_WIDTH + (x - 1)
     }
 
     pub fn fits(&self, y: i32, x: i32) -> bool {
@@ -62,7 +146,7 @@ impl Field {
     }
 }
 
-impl Deref for Field {
+impl Deref for Game {
     type Target = WINDOW;
 
     fn deref(&self) -> &Self::Target {
@@ -70,18 +154,20 @@ impl Deref for Field {
     }
 }
 
-impl Drop for Field {
+impl Drop for Game {
     fn drop(&mut self) {
         delwin(self.window);
     }
 }
 
+/// A tetromino block
 #[derive(Debug, Clone)]
 struct Block {
     data: [u8; 16],
     index: usize,
     y: i32,
     x: i32,
+    id: i16,
 }
 
 impl Block {
@@ -91,7 +177,12 @@ impl Block {
             index: 0,
             x: 0,
             y: 0,
+            id: 0,
         }
+    }
+
+    pub fn setid(&mut self, id: i16) {
+        self.id = id;
     }
 
     pub fn row(&mut self, row: &str) {
@@ -112,10 +203,11 @@ impl Block {
         (idx / 4, idx % 4)
     }
 
-    pub fn rotate(&mut self, field: &Field) {
+    pub fn rotate(&mut self, game: &Game) {
         let mut new: [u8; 16] = [0; 16];
 
-        self.clear(&field);
+        // clear block
+        self.clear(**game);
 
         for (i, c) in self.data.into_iter().enumerate() {
             let (y, x) = Self::getyx(i);
@@ -123,38 +215,47 @@ impl Block {
             new[idx] = *c;
         }
 
+        let old = self.data;
         self.data = new;
+
+        if !self.fits(&game, self.y, self.x) {
+            self.data = old;
+            return;
+        }
     }
 
-    pub fn draw(&self, field: &Field) {
-        self.fill(&field, false, &mut []);
+    pub fn draw(&self, window: WINDOW) {
+        self.fill(window, false, &mut []);
     }
 
-    pub fn clear(&self, field: &Field) {
-        self.fill(&field, true, &mut []);
+    pub fn clear(&self, window: WINDOW) {
+        self.fill(window, true, &mut []);
     }
 
-    pub fn store(&self, field: &Field, data: &mut [char]) {
-        self.fill(&field, false, data);
+    pub fn store(&self, window: WINDOW, data: &mut [char]) {
+        self.fill(window, false, data);
     }
 
-    fn fill(&self, field: &Field, clear: bool, data: &mut [char]) {
+    fn fill(&self, window: WINDOW, clear: bool, data: &mut [char]) {
         let mut py = self.y;
         let mut px = self.x;
 
         for v in self.data.into_iter() {
-            let mut c = *v as char;
+            let c = *v as char;
             if px >= self.x + 4 {
                 px = self.x;
                 py = py + 1;
             }
-            if c != '.' {
+            if py > 0 && c != '.' {
+                let mut ch = c.into();
                 if clear {
-                    c = ' ';
+                    ch = ' '.into();
+                } else if has_colors() {
+                    ch = ACS_BLOCK() | COLOR_PAIR(self.id);
                 }
-                mvwaddch(**field, py, px, c.into());
+                mvwaddch(window, py, px, ch);
 
-                let idx = Field::index(py, px);
+                let idx = Game::index(py, px);
                 if idx > 0 && data.len() >= idx as usize {
                     data[idx as usize] = c;
                 }
@@ -163,7 +264,7 @@ impl Block {
         }
     }
 
-    pub fn fits(&mut self, field: &Field, y: i32, x: i32) -> bool {
+    pub fn fits(&self, game: &Game, y: i32, x: i32) -> bool {
         let mut py = y;
         let mut px = x;
 
@@ -174,9 +275,7 @@ impl Block {
                 py = py + 1;
             }
             if c != '.' {
-                if px < 1 || px > FIELD_WIDTH || py > FIELD_HEIGHT ||
-                    (py > 0 && !field.fits(py, px))
-                {
+                if px < 1 || px > GAME_WIDTH || py > GAME_HEIGHT || (py > 0 && !game.fits(py, px)) {
                     return false;
                 }
             }
@@ -186,6 +285,7 @@ impl Block {
     }
 }
 
+/// All tetromino blocks
 #[derive(Debug)]
 struct Tetromino {
     data: Vec<Block>,
@@ -194,63 +294,70 @@ struct Tetromino {
 impl Tetromino {
     pub fn new() -> Self {
         let mut data = Vec::new();
-        let mut shape;
+        let mut block;
 
         // I
-        shape = Block::new();
-        shape.row("..I.");
-        shape.row("..I.");
-        shape.row("..I.");
-        shape.row("..I.");
-        data.push(shape);
+        block = Block::new();
+        block.setid(1);
+        block.row("..I.");
+        block.row("..I.");
+        block.row("..I.");
+        block.row("..I.");
+        data.push(block);
 
         // J
-        shape = Block::new();
-        shape.row("..J.");
-        shape.row("..J.");
-        shape.row(".JJ.");
-        shape.row("....");
-        data.push(shape);
+        block = Block::new();
+        block.setid(2);
+        block.row("..J.");
+        block.row("..J.");
+        block.row(".JJ.");
+        block.row("....");
+        data.push(block);
 
         // L
-        shape = Block::new();
-        shape.row(".L..");
-        shape.row(".L..");
-        shape.row(".LL.");
-        shape.row("....");
-        data.push(shape);
+        block = Block::new();
+        block.setid(3);
+        block.row(".L..");
+        block.row(".L..");
+        block.row(".LL.");
+        block.row("....");
+        data.push(block);
 
         // O
-        shape = Block::new();
-        shape.row("....");
-        shape.row(".OO.");
-        shape.row(".OO.");
-        shape.row("....");
-        data.push(shape);
+        block = Block::new();
+        block.setid(4);
+        block.row("....");
+        block.row(".OO.");
+        block.row(".OO.");
+        block.row("....");
+        data.push(block);
 
         // S
-        shape = Block::new();
-        shape.row(".S..");
-        shape.row(".SS.");
-        shape.row("..S.");
-        shape.row("....");
-        data.push(shape);
+        block = Block::new();
+        block.setid(5);
+        block.row(".S..");
+        block.row(".SS.");
+        block.row("..S.");
+        block.row("....");
+        data.push(block);
 
         // T
-        shape = Block::new();
-        shape.row("..T.");
-        shape.row(".TT.");
-        shape.row("..T.");
-        shape.row("....");
-        data.push(shape);
+        block = Block::new();
+        block.setid(6);
+        block.row("..T.");
+        block.row(".TT.");
+        block.row("..T.");
+        block.row("....");
+        data.push(block);
 
         // Z
-        shape = Block::new();
-        shape.row("..Z.");
-        shape.row(".ZZ.");
-        shape.row(".Z..");
-        shape.row("....");
-        data.push(shape);
+        block = Block::new();
+        block.setid(7);
+        block.row("..Z.");
+        block.row(".ZZ.");
+        block.row(".Z..");
+        block.row("....");
+        data.push(block);
 
         Self { data }
     }
@@ -263,66 +370,115 @@ impl Tetromino {
     }
 }
 
-fn main() {
-    let tetromino = Tetromino::new();
+fn engine(tetromino: Tetromino) {
     let mut quit = false;
-    let (mut x, mut y) = (5, -3);
-
-    initscr();
-    curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-    noecho();
-    halfdelay(5);
-
-    let mut field = Field::new();
+    let (mut x, mut y) = (5, -1);
+    let mut game = Game::new();
     let (mut block, mut next) = (tetromino.next(), tetromino.next());
+    game.status(&mut next);
 
     while !quit {
-        // TIMING: haldelay() sleeps up to a timeout
-        // INPUT
-        match wgetch(*field) {
-            113 => quit = true,
-            110 => {
-                block = next;
-                next = tetromino.next();
+        // Handle input
+        match wgetch(*game) {
+            KEY_QUIT => quit = true,
+            KEY_RESTART => return engine(tetromino),
+            KEY_PLUS => {
+                game.faster();
+                game.status(&mut next);
+            }
+            KEY_MINUS => {
+                game.slower();
+                game.status(&mut next);
+            }
+            KEY_SPACE => {
+                // Jump to last possible line
+                for py in (y..getmaxy(*game)).rev() {
+                    if block.fits(&game, py, x) {
+                        game.addscore(py - y);
+                        y = py;
+                        break;
+                    }
+                }
             }
             KEY_UP => {
-                block.rotate(&field);
+                block.rotate(&game);
             }
             KEY_DOWN => {
-                if block.fits(&field, y + 1, x) {
+                if block.fits(&game, y + 1, x) {
                     y = y + 1;
                 }
             }
             KEY_LEFT => {
-                if block.fits(&field, y, x - 1) {
+                if block.fits(&game, y, x - 1) {
                     x = x - 1;
                 }
             }
             KEY_RIGHT => {
-                if block.fits(&field, y, x + 1) {
+                if block.fits(&game, y, x + 1) {
                     x = x + 1;
                 }
             }
             _ => {}
         }
 
-        // GAME LOGIC
-        block.clear(&field);
+        // Core logic
+        block.clear(*game);
         block.setyx(y, x);
-        block.draw(&field);
-        if !block.fits(&field, y + 1, x) {
-            field.store(block);
+        block.draw(*game);
+
+        // Store block and create a new one if the previous doesn't fit
+        if !block.fits(&game, y + 1, x) {
+            game.store(block);
             block = next;
             next = tetromino.next();
+            beep();
             x = 5;
-            y = -3;
+            y = -1;
+            game.status(&mut next);
         } else {
             y = y + 1;
         }
 
-        // RENDER OUTPUT
-        field.refresh();
+        // End game if the new block doesn't fit
+        if quit || !block.fits(&game, y, x) {
+            game.gameover();
+            game.status(&mut next);
+
+            quit = false;
+            while !quit {
+                match wgetch(*game) {
+                    KEY_QUIT => quit = true,
+                    KEY_RESTART => return engine(tetromino),
+                    _ => {}
+                }
+
+            }
+        }
+
+        // Render output
+        game.refresh();
     }
+}
+
+fn main() {
+    let tetromino = Tetromino::new();
+
+    initscr();
+    curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+    noecho();
+
+    if has_colors() {
+        start_color();
+        init_pair(1, COLOR_RED, COLOR_BLACK);
+        init_pair(2, COLOR_GREEN, COLOR_BLACK);
+        init_pair(3, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(4, COLOR_BLUE, COLOR_BLACK);
+        init_pair(5, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(6, COLOR_CYAN, COLOR_BLACK);
+        init_pair(7, COLOR_WHITE, COLOR_BLACK);
+    }
+
+    engine(tetromino);
 
     endwin();
 }
