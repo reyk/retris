@@ -11,6 +11,8 @@ const FIELD_WIDTH: i32 = 12;
 
 struct Field {
     window: WINDOW,
+    blocks: Vec<Block>,
+    data: [char; (FIELD_HEIGHT * FIELD_WIDTH) as usize],
 }
 
 impl Field {
@@ -21,14 +23,42 @@ impl Field {
         box_(window, 0, 0);
         keypad(window, true);
         intrflush(window, false);
-        let mut field = Self { window };
+        let mut field = Self {
+            window,
+            blocks: Vec::new(),
+            data: [0 as char; (FIELD_HEIGHT * FIELD_WIDTH) as usize],
+        };
         field.refresh();
         field
     }
 
     pub fn refresh(&mut self) {
-        box_(self.window, 0, 0);
-        wrefresh(self.window);
+        let mut data = self.data.clone();
+        box_(**self, 0, 0);
+        for block in self.blocks.iter() {
+            block.store(&self, &mut data);
+        }
+        wrefresh(**self);
+        self.data = data;
+    }
+
+    pub fn store(&mut self, block: Block) {
+        self.blocks.push(block);
+    }
+
+    pub fn index(y: i32, x: i32) -> i32 {
+        if y < 1 || x < 1 || y > FIELD_HEIGHT + 1 || x > FIELD_WIDTH + 1 {
+            return -1;
+        }
+        (y - 1) * FIELD_WIDTH + (x - 1)
+    }
+
+    pub fn fits(&self, y: i32, x: i32) -> bool {
+        let idx = Self::index(y, x);
+        if idx < 0 || self.data[idx as usize] != 0.into() {
+            return false;
+        }
+        true
     }
 }
 
@@ -48,93 +78,111 @@ impl Drop for Field {
 
 #[derive(Debug, Clone)]
 struct Block {
-    data: String,
+    data: [u8; 16],
     index: usize,
+    y: i32,
+    x: i32,
 }
 
 impl Block {
     pub fn new() -> Self {
         Self {
-            data: ["....", "....", "....", "...."].concat(),
+            data: b"................".to_owned(),
             index: 0,
+            x: 0,
+            y: 0,
         }
     }
 
     pub fn row(&mut self, row: &str) {
-        self.replace(self.index, row);
-        self.index = self.index + 1;
-    }
-
-    fn replace(&mut self, index: usize, row: &str) {
-        if index >= 4 || row.len() != 4 {
+        let i = self.index;
+        if i >= 4 || row.len() != 4 {
             return;
         }
-        self.data.replace_range((index * 4)..(index * 4 + 4), row);
+        self.data[(i * 4)..(i * 4 + 4)].copy_from_slice(row.as_bytes());
+        self.index = i + 1;
     }
 
+    pub fn setyx(&mut self, y: i32, x: i32) {
+        self.y = y;
+        self.x = x;
+    }
 
-/*
-+--+--+--+--+
-| 0| 1| 2| 3| 0
-+--+--+--+--+
-| 4| 5| 6| 7| 1
-+--+--+--+--+ 
-| 8| 9|10|11| 2
-+--+--+--+--+
-|12|13|14|15| 3
-+--+--+--+--+
+    pub fn getyx(idx: usize) -> (usize, usize) {
+        (idx / 4, idx % 4)
+    }
 
-+--+--+--+--+
-|  |  | X|  |
-+--+--+--+--+
-|  | X| X|  |
-+--+--+--+--+
-|  | X|  |  |
-+--+--+--+--+
-|  |  |  |  |
-+--+--+--+--+
+    pub fn rotate(&mut self, field: &Field) {
+        let mut new: [u8; 16] = [0; 16];
 
-+--+--+--+--+
-|  |  |  |  |
-+--+--+--+--+
-|  | X| X|  |
-+--+--+--+--+
-|  |  | X| X|
-+--+--+--+--+
-|  |  |  |  |
-+--+--+--+--+
-*/
+        self.clear(&field);
 
-    pub fn rotate(&mut self) {
-        let mut new = String::with_capacity(16);
-        let mut y;
-        let mut x;
-
-        for (i, c) in self.data.chars().enumerate() {
-            y = i / 4;
-            x = i % 4;
+        for (i, c) in self.data.into_iter().enumerate() {
+            let (y, x) = Self::getyx(i);
             let idx = 12 + y - (x * 4);
-            eprintln!("{}-{}", i, idx);
-            new.insert(idx, c);
+            new[idx] = *c;
         }
 
         self.data = new;
     }
 
-    pub fn draw(&mut self, window: WINDOW, y: i32, x: i32) {
-        let mut py = y + 1;
-        let mut px = x + 1;
+    pub fn draw(&self, field: &Field) {
+        self.fill(&field, false, &mut []);
+    }
 
-        for v in self.data.chars().into_iter() {
-            if px >= x + 5 {
-                px = x + 1;
+    pub fn clear(&self, field: &Field) {
+        self.fill(&field, true, &mut []);
+    }
+
+    pub fn store(&self, field: &Field, data: &mut [char]) {
+        self.fill(&field, false, data);
+    }
+
+    fn fill(&self, field: &Field, clear: bool, data: &mut [char]) {
+        let mut py = self.y;
+        let mut px = self.x;
+
+        for v in self.data.into_iter() {
+            let mut c = *v as char;
+            if px >= self.x + 4 {
+                px = self.x;
                 py = py + 1;
             }
-            if v != '.' {
-                mvwaddch(window, py, px, v.into());
+            if c != '.' {
+                if clear {
+                    c = ' ';
+                }
+                mvwaddch(**field, py, px, c.into());
+
+                let idx = Field::index(py, px);
+                if idx > 0 && data.len() >= idx as usize {
+                    data[idx as usize] = c;
+                }
             }
             px = px + 1;
         }
+    }
+
+    pub fn fits(&mut self, field: &Field, y: i32, x: i32) -> bool {
+        let mut py = y;
+        let mut px = x;
+
+        for v in self.data.into_iter() {
+            let c = *v as char;
+            if px >= x + 4 {
+                px = x;
+                py = py + 1;
+            }
+            if c != '.' {
+                if px < 1 || px > FIELD_WIDTH || py > FIELD_HEIGHT ||
+                    (py > 0 && !field.fits(py, px))
+                {
+                    return false;
+                }
+            }
+            px = px + 1;
+        }
+        true
     }
 }
 
@@ -218,7 +266,7 @@ impl Tetromino {
 fn main() {
     let tetromino = Tetromino::new();
     let mut quit = false;
-    let (mut x, mut y) = (4, 0);
+    let (mut x, mut y) = (5, -3);
 
     initscr();
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
@@ -226,28 +274,32 @@ fn main() {
     halfdelay(5);
 
     let mut field = Field::new();
-    let (mut block, mut _next) = (tetromino.next(), tetromino.next());
+    let (mut block, mut next) = (tetromino.next(), tetromino.next());
 
     while !quit {
         // TIMING: haldelay() sleeps up to a timeout
         // INPUT
         match wgetch(*field) {
             113 => quit = true,
+            110 => {
+                block = next;
+                next = tetromino.next();
+            }
             KEY_UP => {
-                block.rotate();
+                block.rotate(&field);
             }
             KEY_DOWN => {
-                if y < FIELD_HEIGHT - 1 {
+                if block.fits(&field, y + 1, x) {
                     y = y + 1;
                 }
             }
             KEY_LEFT => {
-                if x > 0 {
+                if block.fits(&field, y, x - 1) {
                     x = x - 1;
                 }
             }
             KEY_RIGHT => {
-                if x < FIELD_WIDTH - 1 {
+                if block.fits(&field, y, x + 1) {
                     x = x + 1;
                 }
             }
@@ -255,9 +307,18 @@ fn main() {
         }
 
         // GAME LOGIC
-        werase(*field);
-        //mvwaddstr(*field, y + 1, x + 1, "X");
-        block.draw(*field, y, x);
+        block.clear(&field);
+        block.setyx(y, x);
+        block.draw(&field);
+        if !block.fits(&field, y + 1, x) {
+            field.store(block);
+            block = next;
+            next = tetromino.next();
+            x = 5;
+            y = -3;
+        } else {
+            y = y + 1;
+        }
 
         // RENDER OUTPUT
         field.refresh();
