@@ -34,7 +34,7 @@ const KEY_MINUS: i32 = 45;
 struct Game {
     window: WINDOW,
     status: WINDOW,
-    data: [char; (GAME_HEIGHT * GAME_WIDTH) as usize],
+    data: [u32; (GAME_HEIGHT * GAME_WIDTH) as usize],
     score: i32,
     done: bool,
     level: i32,
@@ -57,7 +57,7 @@ impl Game {
         let mut game = Self {
             window,
             status,
-            data: [0 as char; (GAME_HEIGHT * GAME_WIDTH) as usize],
+            data: [0 as u32; (GAME_HEIGHT * GAME_WIDTH) as usize],
             score: 0,
             done: false,
             level,
@@ -68,6 +68,13 @@ impl Game {
 
     pub fn refresh(&mut self) {
         box_(**self, 0, 0);
+
+        // XXX remove full rows
+        for (i, ch) in self.data.into_iter().enumerate().filter(|(_, c)| **c != 0) {
+            let (y, x) = Self::getyx(i);
+            mvwaddch(**self, y as i32 + 1, x as i32 + 1, *ch);
+        }
+
         wrefresh(**self);
     }
 
@@ -130,6 +137,10 @@ impl Game {
         block.store(**self, &mut self.data);
     }
 
+    pub fn getyx(idx: usize) -> (usize, usize) {
+        (idx / GAME_WIDTH as usize, idx % GAME_WIDTH as usize)
+    }
+
     pub fn index(y: i32, x: i32) -> i32 {
         if y < 1 || x < 1 || y > GAME_HEIGHT + 1 || x > GAME_WIDTH + 1 {
             return -1;
@@ -139,7 +150,7 @@ impl Game {
 
     pub fn fits(&self, y: i32, x: i32) -> bool {
         let idx = Self::index(y, x);
-        if idx < 0 || self.data[idx as usize] != 0.into() {
+        if idx < 0 || self.data[idx as usize] != 0 {
             return false;
         }
         true
@@ -232,11 +243,11 @@ impl Block {
         self.fill(window, true, &mut []);
     }
 
-    pub fn store(&self, window: WINDOW, data: &mut [char]) {
+    pub fn store(&self, window: WINDOW, data: &mut [u32]) {
         self.fill(window, false, data);
     }
 
-    fn fill(&self, window: WINDOW, clear: bool, data: &mut [char]) {
+    fn fill(&self, window: WINDOW, clear: bool, data: &mut [u32]) {
         let mut py = self.y;
         let mut px = self.x;
 
@@ -257,7 +268,7 @@ impl Block {
 
                 let idx = Game::index(py, px);
                 if idx > 0 && data.len() >= idx as usize {
-                    data[idx as usize] = c;
+                    data[idx as usize] = ch;
                 }
             }
             px = px + 1;
@@ -469,13 +480,13 @@ fn main() {
 
     if has_colors() {
         start_color();
-        init_pair(1, COLOR_RED, COLOR_BLACK);
-        init_pair(2, COLOR_GREEN, COLOR_BLACK);
-        init_pair(3, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(4, COLOR_BLUE, COLOR_BLACK);
-        init_pair(5, COLOR_MAGENTA, COLOR_BLACK);
-        init_pair(6, COLOR_CYAN, COLOR_BLACK);
-        init_pair(7, COLOR_WHITE, COLOR_BLACK);
+        init_pair(1, COLOR_CYAN, COLOR_BLACK);
+        init_pair(2, COLOR_BLUE, COLOR_BLACK);
+        init_pair(3, COLOR_WHITE, COLOR_BLACK);
+        init_pair(4, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(5, COLOR_GREEN, COLOR_BLACK);
+        init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(7, COLOR_RED, COLOR_BLACK);
     }
 
     engine(tetromino);
