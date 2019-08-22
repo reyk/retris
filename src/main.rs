@@ -29,8 +29,6 @@ const GAME_FIELD: usize = (GAME_HEIGHT * GAME_WIDTH) as usize;
 const KEY_SPACE: i32 = 32;
 const KEY_QUIT: i32 = 113;
 const KEY_RESTART: i32 = 114;
-const KEY_PLUS: i32 = 43;
-const KEY_MINUS: i32 = 45;
 
 /// The rETRIS game.
 struct Game {
@@ -96,21 +94,24 @@ impl Game {
             mvwaddch(**self, y as i32 + 1, x as i32 + 1, *ch);
         }
 
+        self.speed();
+
         box_(**self, 0, 0);
         wrefresh(**self);
     }
 
-    pub fn faster(&mut self) {
-        if self.level > 1 {
-            self.level = self.level - 1;
-        }
-        halfdelay(self.level);
-    }
+    fn speed(&mut self) {
+        let mut count = 0;
 
-    pub fn slower(&mut self) {
-        if self.level < 10 {
-            self.level = self.level + 1;
+        for (i, ch) in self.data.into_iter().enumerate() {
+            count = i;
+            if *ch != 0 {
+                break;
+            }
         }
+
+        // Calculate level as a percentage of the utilized rows
+        self.level = (((count as f32) / GAME_FIELD as f32).abs() * 10 as f32) as i32;
         halfdelay(self.level);
     }
 
@@ -130,32 +131,21 @@ impl Game {
         block.setyx(4, 4);
         block.draw(self.status);
         mvwaddstr(self.status, 9, 0, &format!("Score: {}", self.score));
-        mvwaddstr(
-            self.status,
-            10,
-            0,
-            &format!("Level: {}", 10 - self.level + 1),
-        );
+        mvwaddstr(self.status, 10, 0, &format!("Level: {}", 10 - self.level));
         if self.done {
             mvwaddstr(self.status, 12, 0, "GAME OVER!");
         }
         mvwaddstr(
             self.status,
-            getmaxy(self.status) - 2,
-            0,
-            "+: faster  r: restart",
-        );
-        mvwaddstr(
-            self.status,
             getmaxy(self.status) - 1,
             0,
-            "-: slower  q: quit",
+            "q: quit   r: restart",
         );
         wrefresh(self.status);
     }
 
     pub fn store(&mut self, block: Block) {
-        self.addscore(10 - self.level + 1);
+        self.addscore(10 - self.level);
         block.store(**self, &mut self.data);
     }
 
@@ -415,14 +405,6 @@ fn engine(tetromino: Tetromino) {
         match wgetch(*game) {
             KEY_QUIT => quit = true,
             KEY_RESTART => return engine(tetromino),
-            KEY_PLUS => {
-                game.faster();
-                game.status(&mut next);
-            }
-            KEY_MINUS => {
-                game.slower();
-                game.status(&mut next);
-            }
             KEY_SPACE => {
                 // Jump to last possible line
                 for py in (y..getmaxy(*game)).rev() {
