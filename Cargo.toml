@@ -1,0 +1,9 @@
+[package]
+name = "tetris"
+version = "0.1.0"
+authors = ["Reyk Floeter <contact@reykfloeter.com>"]
+edition = "2018"
+
+[dependencies]
+ncurses = "*"
+rand = "*"
