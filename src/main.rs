@@ -24,6 +24,8 @@ use std::ops::Deref;
 
 const GAME_HEIGHT: i32 = 18;
 const GAME_WIDTH: i32 = 12;
+const GAME_FIELD: usize = (GAME_HEIGHT * GAME_WIDTH) as usize;
+
 const KEY_SPACE: i32 = 32;
 const KEY_QUIT: i32 = 113;
 const KEY_RESTART: i32 = 114;
@@ -34,7 +36,7 @@ const KEY_MINUS: i32 = 45;
 struct Game {
     window: WINDOW,
     status: WINDOW,
-    data: [u32; (GAME_HEIGHT * GAME_WIDTH) as usize],
+    data: [u32; GAME_FIELD],
     score: i32,
     done: bool,
     level: i32,
@@ -57,7 +59,7 @@ impl Game {
         let mut game = Self {
             window,
             status,
-            data: [0 as u32; (GAME_HEIGHT * GAME_WIDTH) as usize],
+            data: [0 as u32; GAME_FIELD],
             score: 0,
             done: false,
             level,
@@ -67,14 +69,34 @@ impl Game {
     }
 
     pub fn refresh(&mut self) {
-        box_(**self, 0, 0);
+        let mut data: [u32; GAME_FIELD] = [0 as u32; GAME_FIELD];
+        let mut redraw = false;
+        let mut row = 1;
 
-        // XXX remove full rows
-        for (i, ch) in self.data.into_iter().enumerate().filter(|(_, c)| **c != 0) {
+        // Remove full rows
+        for r in self.data.chunks(GAME_WIDTH as usize).rev() {
+            if !r.contains(&0) {
+                redraw = true;
+            } else {
+                let j = GAME_FIELD - (row * GAME_WIDTH as usize);
+                data[j..(j + GAME_WIDTH as usize)].copy_from_slice(r);
+                row = row + 1;
+            }
+        }
+
+        if redraw {
+            self.data = data;
+            wclear(**self);
+        }
+        for (i, ch) in self.data.into_iter().enumerate().filter(
+            |(_, ch)| **ch != 0,
+        )
+        {
             let (y, x) = Self::getyx(i);
             mvwaddch(**self, y as i32 + 1, x as i32 + 1, *ch);
         }
 
+        box_(**self, 0, 0);
         wrefresh(**self);
     }
 
