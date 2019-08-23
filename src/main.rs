@@ -111,8 +111,13 @@ impl Game {
         }
 
         // Calculate level as a percentage of the utilized rows
-        self.level = (((count as f32) / GAME_FIELD as f32).abs() * 10 as f32) as i32;
-        halfdelay(self.level);
+        let level = (((count as f32) / GAME_FIELD as f32).abs() * 10 as f32) as i32;
+
+        // Only bump the level, never lower it
+        if level < self.level {
+            self.level = level;
+            halfdelay(self.level);
+        }
     }
 
     pub fn addscore(&mut self, score: i32) {
