@@ -1,9 +1,9 @@
 [package]
-name = "tetris"
+name = "retris"
 version = "0.1.0"
 authors = ["Reyk Floeter <contact@reykfloeter.com>"]
 edition = "2018"
 
 [dependencies]
-ncurses = "*"
-rand = "*"
+ncurses = "5.99.0"
+rand = "0.7.0"
