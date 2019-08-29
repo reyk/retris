@@ -32,30 +32,37 @@ const KEY_RESTART: i32 = 114;
 
 /// The rETRIS game.
 struct Game {
-    window: WINDOW,
+    /// The window representing the main playing field of the game
+    field: WINDOW,
+    /// The window of the game status and help
     status: WINDOW,
+    /// The state of the field
     data: [u32; GAME_FIELD],
+    /// The current score
     score: i32,
+    /// Game Over!
     done: bool,
+    /// The level (based on max. height of rows)
     level: i32,
 }
 
 impl Game {
+    /// Initialize a new game
     pub fn new() -> Self {
         let yoff = 1;
         let xoff = getmaxx(curscr()) / 2 - ((GAME_WIDTH + 2) / 2);
         let level = 10;
 
-        let window = newwin(GAME_HEIGHT + 2, GAME_WIDTH + 2, yoff, xoff);
+        let field = newwin(GAME_HEIGHT + 2, GAME_WIDTH + 2, yoff, xoff);
         let status = newwin(GAME_HEIGHT + 2, xoff - 2, yoff, 1);
-        box_(window, 0, 0);
+        box_(field, 0, 0);
 
-        keypad(window, true);
-        intrflush(window, false);
+        keypad(field, true);
+        intrflush(field, false);
         halfdelay(level);
 
         let mut game = Self {
-            window,
+            field,
             status,
             data: [0 as u32; GAME_FIELD],
             score: 0,
@@ -66,6 +73,7 @@ impl Game {
         game
     }
 
+    /// Update the game field
     pub fn refresh(&mut self) {
         let mut data: [u32; GAME_FIELD] = [0 as u32; GAME_FIELD];
         let mut redraw = false;
@@ -97,6 +105,7 @@ impl Game {
         wrefresh(**self);
     }
 
+    /// Update the level and the game speed accordingly
     fn speed(&mut self) {
         let mut count = 0;
 
@@ -117,14 +126,17 @@ impl Game {
         }
     }
 
+    /// Increase the score
     pub fn addscore(&mut self, score: i32) {
         self.score += score;
     }
 
+    /// End the game
     pub fn gameover(&mut self) {
         self.done = true;
     }
 
+    /// Update the game status window
     pub fn status(&mut self, block: &mut Block) {
         wclear(self.status);
         mvwaddstr(self.status, 0, 0, "rETRIS");
@@ -158,15 +170,18 @@ impl Game {
         wrefresh(self.status);
     }
 
+    /// Put a block on the game field stack
     pub fn store(&mut self, block: Block) {
         self.addscore(10 - self.level);
         block.store(**self, &mut self.data);
     }
 
+    /// Get coordinates by relative index
     pub fn getyx(idx: usize) -> (usize, usize) {
         (idx / GAME_WIDTH as usize, idx % GAME_WIDTH as usize)
     }
 
+    /// Get relative index by coordinates
     pub fn index(y: i32, x: i32) -> i32 {
         if y < 1 || x < 1 || y > GAME_HEIGHT + 1 || x > GAME_WIDTH + 1 {
             return -1;
@@ -174,6 +189,7 @@ impl Game {
         (y - 1) * GAME_WIDTH + (x - 1)
     }
 
+    /// Does a block pixel "fit" on the specified coordinate - is it empty?
     pub fn fits(&self, y: i32, x: i32) -> bool {
         let idx = Self::index(y, x);
         if idx < 0 || self.data[idx as usize] != 0 {
@@ -187,27 +203,34 @@ impl Deref for Game {
     type Target = WINDOW;
 
     fn deref(&self) -> &Self::Target {
-        &self.window
+        &self.field
     }
 }
 
 impl Drop for Game {
     fn drop(&mut self) {
-        delwin(self.window);
+        delwin(self.field);
+        delwin(self.status);
     }
 }
 
 /// A tetromino block
 #[derive(Debug, Clone)]
 struct Block {
+    /// The 4x4 tetromino block
     data: [u8; 16],
+    /// The type of the tetromino block
     index: usize,
+    /// The current y location
     y: i32,
+    /// The current x location
     x: i32,
+    /// The individual id of the tetromino block
     id: i16,
 }
 
 impl Block {
+    /// Return a new "empty" block
     pub fn new() -> Self {
         Self {
             data: b"................".to_owned(),
@@ -218,10 +241,12 @@ impl Block {
         }
     }
 
+    /// Set the individual block id
     pub fn setid(&mut self, id: i16) {
         self.id = id;
     }
 
+    /// Set the next row of the block to turn it into a tetromino
     pub fn row(&mut self, row: &str) {
         let i = self.index;
         if i >= 4 || row.len() != 4 {
@@ -231,15 +256,18 @@ impl Block {
         self.index = i + 1;
     }
 
+    /// Store the coordinates of the block
     pub fn setyx(&mut self, y: i32, x: i32) {
         self.y = y;
         self.x = x;
     }
 
+    /// Get the coordinates of the block
     pub fn getyx(idx: usize) -> (usize, usize) {
         (idx / 4, idx % 4)
     }
 
+    /// Rotate the block on the game field
     pub fn rotate(&mut self, game: &Game) {
         let mut new: [u8; 16] = [0; 16];
 
@@ -261,14 +289,18 @@ impl Block {
         }
     }
 
+    /// Draw the block on the specified window
     pub fn draw(&self, window: WINDOW) {
         self.fill(window, false, &mut []);
     }
 
+    /// Clear the block from the specified window
     pub fn clear(&self, window: WINDOW) {
         self.fill(window, true, &mut []);
     }
 
+
+    /// Draw the block on the specified window and save its pixels
     pub fn store(&self, window: WINDOW, data: &mut [u32]) {
         self.fill(window, false, data);
     }
@@ -301,6 +333,7 @@ impl Block {
         }
     }
 
+    /// Does the block fit on the game field?
     pub fn fits(&self, game: &Game, y: i32, x: i32) -> bool {
         let mut py = y;
         let mut px = x;
@@ -325,10 +358,12 @@ impl Block {
 /// All tetromino blocks
 #[derive(Debug)]
 struct Tetromino {
+    /// A vector of all tetrominos (I, J, L, O, S, T, Z)
     data: Vec<Block>,
 }
 
 impl Tetromino {
+    /// Create the tetrominos
     pub fn new() -> Self {
         let mut data = Vec::new();
         let mut block;
@@ -407,6 +442,7 @@ impl Tetromino {
     }
 }
 
+/// Start a new game
 fn engine(tetromino: Tetromino) {
     let mut quit = false;
     let (mut x, mut y) = (5, -1);
@@ -489,6 +525,7 @@ fn engine(tetromino: Tetromino) {
     }
 }
 
+/// rETRIS!
 fn main() {
     let tetromino = Tetromino::new();
 
@@ -499,6 +536,7 @@ fn main() {
     if has_colors() {
         start_color();
 
+        // Set the block colors by index
         init_pair(1, COLOR_BLACK, COLOR_CYAN);
         init_pair(2, COLOR_BLACK, COLOR_BLUE);
         init_pair(3, COLOR_BLACK, COLOR_WHITE);
