@@ -78,7 +78,7 @@ impl Game {
             } else {
                 let j = GAME_FIELD - (row * GAME_WIDTH as usize);
                 data[j..(j + GAME_WIDTH as usize)].copy_from_slice(r);
-                row = row + 1;
+                row += 1;
             }
         }
 
@@ -86,10 +86,7 @@ impl Game {
             self.data = data;
             wclear(**self);
         }
-        for (i, ch) in self.data.into_iter().enumerate().filter(
-            |(_, ch)| **ch != 0,
-        )
-        {
+        for (i, ch) in self.data.iter().enumerate().filter(|(_, ch)| **ch != 0) {
             let (y, x) = Self::getyx(i);
             mvwaddch(**self, y as i32 + 1, x as i32 + 1, *ch);
         }
@@ -103,7 +100,7 @@ impl Game {
     fn speed(&mut self) {
         let mut count = 0;
 
-        for (i, ch) in self.data.into_iter().enumerate() {
+        for (i, ch) in self.data.iter().enumerate() {
             count = i;
             if *ch != 0 {
                 break;
@@ -121,7 +118,7 @@ impl Game {
     }
 
     pub fn addscore(&mut self, score: i32) {
-        self.score = self.score + score;
+        self.score += score;
     }
 
     pub fn gameover(&mut self) {
@@ -249,7 +246,7 @@ impl Block {
         // clear block
         self.clear(**game);
 
-        for (i, c) in self.data.into_iter().enumerate() {
+        for (i, c) in self.data.iter().enumerate() {
             let (y, x) = Self::getyx(i);
             let idx = 12 + y - (x * 4);
             new[idx] = *c;
@@ -280,11 +277,11 @@ impl Block {
         let mut py = self.y;
         let mut px = self.x;
 
-        for v in self.data.into_iter() {
+        for v in self.data.iter() {
             let c = *v as char;
             if px >= self.x + 4 {
                 px = self.x;
-                py = py + 1;
+                py += 1;
             }
             if py > 0 && c != '.' {
                 let mut ch = c.into();
@@ -300,7 +297,7 @@ impl Block {
                     data[idx as usize] = ch;
                 }
             }
-            px = px + 1;
+            px += 1;
         }
     }
 
@@ -308,18 +305,18 @@ impl Block {
         let mut py = y;
         let mut px = x;
 
-        for v in self.data.into_iter() {
+        for v in self.data.iter() {
             let c = *v as char;
             if px >= x + 4 {
                 px = x;
-                py = py + 1;
+                py += 1;
             }
-            if c != '.' {
-                if px < 1 || px > GAME_WIDTH || py > GAME_HEIGHT || (py > 0 && !game.fits(py, px)) {
-                    return false;
-                }
+            if c != '.' &&
+                (px < 1 || px > GAME_WIDTH || py > GAME_HEIGHT || (py > 0 && !game.fits(py, px)))
+            {
+                return false;
             }
-            px = px + 1;
+            px += 1;
         }
         true
     }
@@ -404,7 +401,7 @@ impl Tetromino {
 
     pub fn next(&self) -> Block {
         self.data.choose(&mut thread_rng()).map_or_else(
-            || Block::new(),
+            Block::new,
             |b| b.clone(),
         )
     }
@@ -437,17 +434,17 @@ fn engine(tetromino: Tetromino) {
             }
             KEY_DOWN => {
                 if block.fits(&game, y + 1, x) {
-                    y = y + 1;
+                    y += 1;
                 }
             }
             KEY_LEFT => {
                 if block.fits(&game, y, x - 1) {
-                    x = x - 1;
+                    x -= 1;
                 }
             }
             KEY_RIGHT => {
                 if block.fits(&game, y, x + 1) {
-                    x = x + 1;
+                    x += 1;
                 }
             }
             _ => {}
@@ -468,7 +465,7 @@ fn engine(tetromino: Tetromino) {
             y = -1;
             game.status(&mut next);
         } else {
-            y = y + 1;
+            y += 1;
         }
 
         // End game if the new block doesn't fit
