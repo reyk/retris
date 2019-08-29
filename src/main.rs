@@ -22,7 +22,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::ops::Deref;
 
-const GAME_HEIGHT: i32 = 18;
+const GAME_HEIGHT: i32 = 20;
 const GAME_WIDTH: i32 = 12;
 const GAME_FIELD: usize = (GAME_HEIGHT * GAME_WIDTH) as usize;
 
@@ -111,7 +111,7 @@ impl Game {
         }
 
         // Calculate level as a percentage of the utilized rows
-        let level = (((count as f32) / GAME_FIELD as f32).abs() * 10 as f32) as i32;
+        let level = (((count as f32) / GAME_FIELD as f32) * 10.0) as i32;
 
         // Only bump the level, never lower it
         if level < self.level {
@@ -142,9 +142,21 @@ impl Game {
         }
         mvwaddstr(
             self.status,
+            getmaxy(self.status) - 3,
+            0,
+            "left / right/ down: move",
+        );
+        mvwaddstr(
+            self.status,
+            getmaxy(self.status) - 2,
+            0,
+            "up: rotate   space: drop",
+        );
+        mvwaddstr(
+            self.status,
             getmaxy(self.status) - 1,
             0,
-            "q: quit   r: restart",
+            "r: restart       q: quit",
         );
         wrefresh(self.status);
     }
