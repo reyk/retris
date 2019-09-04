@@ -299,7 +299,6 @@ impl Block {
         self.fill(window, true, &mut []);
     }
 
-
     /// Draw the block on the specified window and save its pixels
     pub fn store(&self, window: WINDOW, data: &mut [u32]) {
         self.fill(window, false, data);
@@ -344,8 +343,8 @@ impl Block {
                 px = x;
                 py += 1;
             }
-            if c != '.' &&
-                (px < 1 || px > GAME_WIDTH || py > GAME_HEIGHT || (py > 0 && !game.fits(py, px)))
+            if c != '.'
+                && (px < 1 || px > GAME_WIDTH || py > GAME_HEIGHT || (py > 0 && !game.fits(py, px)))
             {
                 return false;
             }
@@ -435,10 +434,9 @@ impl Tetromino {
     }
 
     pub fn next(&self) -> Block {
-        self.data.choose(&mut thread_rng()).map_or_else(
-            Block::new,
-            |b| b.clone(),
-        )
+        self.data
+            .choose(&mut thread_rng())
+            .map_or_else(Block::new, |b| b.clone())
     }
 }
 
@@ -516,7 +514,6 @@ fn engine(tetromino: Tetromino) {
                     KEY_RESTART => return engine(tetromino),
                     _ => {}
                 }
-
             }
         }
 
