@@ -26,6 +26,9 @@ const GAME_HEIGHT: i32 = 20;
 const GAME_WIDTH: i32 = 12;
 const GAME_FIELD: usize = (GAME_HEIGHT * GAME_WIDTH) as usize;
 
+const BLOCK_WIDTH: usize = 4;
+const BLOCK_SIZE: usize = BLOCK_WIDTH * BLOCK_WIDTH;
+
 const KEY_SPACE: i32 = 32;
 const KEY_QUIT: i32 = 113;
 const KEY_RESTART: i32 = 114;
@@ -142,7 +145,7 @@ impl Game {
         mvwaddstr(self.status, 0, 0, "rETRIS");
         mvwaddstr(self.status, 1, 0, "(reyk's TETRIS)");
         mvwaddstr(self.status, 3, 0, "Next block:");
-        block.setyx(4, 4);
+        block.setyx(BLOCK_WIDTH as i32, BLOCK_WIDTH as i32);
         block.draw(self.status);
         mvwaddstr(self.status, 9, 0, &format!("Score: {}", self.score));
         mvwaddstr(self.status, 10, 0, &format!("Level: {}", 10 - self.level));
@@ -186,7 +189,7 @@ impl Game {
         if y < 1 || x < 1 || y > GAME_HEIGHT + 1 || x > GAME_WIDTH + 1 {
             return -1;
         }
-        (y - 1) * GAME_WIDTH + (x - 1)
+        GAME_WIDTH * (y - 1) + (x - 1)
     }
 
     /// Does a block pixel "fit" on the specified coordinate - is it empty?
@@ -218,7 +221,7 @@ impl Drop for Game {
 #[derive(Debug, Clone)]
 struct Block {
     /// The 4x4 tetromino block
-    data: [u8; 16],
+    data: [u8; BLOCK_SIZE],
     /// The type of the tetromino block
     index: usize,
     /// The current y location
@@ -249,10 +252,11 @@ impl Block {
     /// Set the next row of the block to turn it into a tetromino
     pub fn row(&mut self, row: &str) {
         let i = self.index;
-        if i >= 4 || row.len() != 4 {
+        if i >= BLOCK_WIDTH || row.len() != BLOCK_WIDTH {
             return;
         }
-        self.data[(i * 4)..(i * 4 + 4)].copy_from_slice(row.as_bytes());
+        self.data[(i * BLOCK_WIDTH)..(i * BLOCK_WIDTH + BLOCK_WIDTH)]
+            .copy_from_slice(row.as_bytes());
         self.index = i + 1;
     }
 
@@ -264,19 +268,22 @@ impl Block {
 
     /// Get the coordinates of the block
     pub fn getyx(idx: usize) -> (usize, usize) {
-        (idx / 4, idx % 4)
+        (idx / BLOCK_WIDTH, idx % BLOCK_WIDTH)
     }
 
     /// Rotate the block on the game field
     pub fn rotate(&mut self, game: &Game) {
-        let mut new: [u8; 16] = [0; 16];
+        let mut new: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
 
         // clear block
         self.clear(**game);
 
+        // rotate each pixel by 90 degrees cw
         for (i, c) in self.data.iter().enumerate() {
             let (y, x) = Self::getyx(i);
-            let idx = 12 + y - (x * 4);
+            let idx = BLOCK_WIDTH * (BLOCK_WIDTH - 1) + y - x * BLOCK_WIDTH;
+            // for ccw:
+            //let idx = BLOCK_WIDTH - 1 - y + x * BLOCK_WIDTH;
             new[idx] = *c;
         }
 
@@ -284,6 +291,7 @@ impl Block {
         self.data = new;
 
         if !self.fits(&game, self.y, self.x) {
+            // revert to previous
             self.data = old;
             return;
         }
@@ -310,7 +318,7 @@ impl Block {
 
         for v in self.data.iter() {
             let c = *v as char;
-            if px >= self.x + 4 {
+            if px >= self.x + BLOCK_WIDTH as i32 {
                 px = self.x;
                 py += 1;
             }
@@ -339,7 +347,7 @@ impl Block {
 
         for v in self.data.iter() {
             let c = *v as char;
-            if px >= x + 4 {
+            if px >= x + BLOCK_WIDTH as i32 {
                 px = x;
                 py += 1;
             }
