@@ -20,6 +20,7 @@ extern crate rand;
 use ncurses::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::convert::TryInto;
 use std::ops::Deref;
 
 const GAME_HEIGHT: i32 = 20;
@@ -99,7 +100,7 @@ impl Game {
         }
         for (i, ch) in self.data.iter().enumerate().filter(|(_, ch)| **ch != 0) {
             let (y, x) = Self::getyx(i);
-            mvwaddch(**self, y as i32 + 1, x as i32 + 1, *ch);
+            mvwaddch(**self, y as i32 + 1, x as i32 + 1, (*ch).into());
         }
 
         self.speed();
@@ -323,13 +324,13 @@ impl Block {
                 py += 1;
             }
             if py > 0 && c != '.' {
-                let mut ch = c.into();
+                let mut ch: u32 = c.into();
                 if clear {
                     ch = ' '.into();
                 } else if has_colors() {
-                    ch = ACS_BLOCK() | COLOR_PAIR(self.id);
+                    ch = (ACS_BLOCK() | COLOR_PAIR(self.id)).try_into().unwrap();
                 }
-                mvwaddch(window, py, px, ch);
+                mvwaddch(window, py, px, ch.into());
 
                 let idx = Game::index(py, px);
                 if idx > 0 && data.len() >= idx as usize {

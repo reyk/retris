@@ -1,0 +1,7 @@
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+before_install:
+  - sudo apt-get -y install libncurses5-dev libncurses5

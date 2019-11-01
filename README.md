@@ -1,6 +1,8 @@
 rETRIS
 ======
 
+[![Build Status](https://travis-ci.org/reyk/retris.svg?branch=master)](https://travis-ci.org/reyk/retris)
+
 reyk's very simple Tetris clone, written in Rust.
 
 Introduction
